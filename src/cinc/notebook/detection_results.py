@@ -9,21 +9,17 @@ from cinc.data.db import get_participant_data
 from cinc.data.data_paths import get_db2_parts_participant_processed_file_paths
 
 CARDIAC_INTERVAL_MATCHING_COST_THRESHOLD = 1.0
-CARDIAC_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT = 0.02
+CARDIAC_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_S = 0.030
 CARDIAC_INTERVAL_MATCHING_NO_OVERLAP_PENALTY = 1.0
-
-RESPIRATORY_INTERVAL_MATCHING_COST_THRESHOLD = 1.0
-RESPIRATORY_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT = 0.05
-RESPIRATORY_INTERVAL_MATCHING_NO_OVERLAP_PENALTY = 1.0
 
 
 def _get_useful_participant_data(participant_file_path: str) -> Dict:
     participant_data = get_participant_data(
         participant_file_path,
         with_psg_cardiac_detection=True,
-        with_psg_respiratory_detection=True,
+        with_psg_respiratory_detection=False,
         with_pel_cardiac_detection=True,
-        with_pel_respiratory_detection=True,
+        with_pel_respiratory_detection=False,
         with_pre_respiratory_detection=False,
         with_base_data=True,
     )
@@ -57,59 +53,6 @@ def _get_useful_participant_data(participant_file_path: str) -> Dict:
 
     pel_cardiac_signal = participant_data["pel"]["cardiac"]["processed"]["signal"]
 
-    # PEL respiratory
-    pel_respiratory_p0_sensor_intervals_list = []
-    pel_respiratory_p1_sensor_intervals_list = []
-    for key, value in participant_data["pel"]["respiratory"]["detection"].items():
-        if not key.startswith("sensor_"):
-            continue
-
-        p0_intervals = value.get("phase_0", {}).get(
-            "intervals", np.array([]).reshape(0, 2)
-        )
-        p0_detections = value.get("phase_0", {}).get("detections", np.array([]))
-        p0_intervals = p0_detections[p0_intervals]
-        pel_respiratory_p0_sensor_intervals_list.append(p0_intervals)
-
-        p1_intervals = value.get("phase_1", {}).get(
-            "intervals", np.array([]).reshape(0, 2)
-        )
-        p1_detections = value.get("phase_1", {}).get("detections", np.array([]))
-        p1_intervals = p1_detections[p1_intervals]
-        pel_respiratory_p1_sensor_intervals_list.append(p1_intervals)
-
-    pel_respiratory_p0_ensemble_intervals = (
-        participant_data["pel"]["respiratory"]["detection"]["ensemble"]
-        .get("phase_0", {})
-        .get("intervals", np.array([]).reshape(0, 2))
-    )
-    pel_respiratory_p0_ensemble_detections = (
-        participant_data["pel"]["respiratory"]["detection"]["ensemble"]
-        .get("phase_0", {})
-        .get("detections", np.array([]))
-    )
-    pel_respiratory_p0_ensemble_intervals = pel_respiratory_p0_ensemble_detections[
-        pel_respiratory_p0_ensemble_intervals
-    ]
-
-    pel_respiratory_p1_ensemble_intervals = (
-        participant_data["pel"]["respiratory"]["detection"]["ensemble"]
-        .get("phase_1", {})
-        .get("intervals", np.array([]).reshape(0, 2))
-    )
-    pel_respiratory_p1_ensemble_detections = (
-        participant_data["pel"]["respiratory"]["detection"]["ensemble"]
-        .get("phase_1", {})
-        .get("detections", np.array([]))
-    )
-    pel_respiratory_p1_ensemble_intervals = pel_respiratory_p1_ensemble_detections[
-        pel_respiratory_p1_ensemble_intervals
-    ]
-
-    pel_respiratory_signal = participant_data["pel"]["respiratory"]["processed"][
-        "signal"
-    ]
-
     # PSG cardiac
     psg_cardiac_intervals = (
         participant_data["psg"]["cardiac"]["detection"]["channel_0"]
@@ -123,35 +66,6 @@ def _get_useful_participant_data(participant_file_path: str) -> Dict:
     )
     psg_cardiac_intervals = psg_cardiac_detections[psg_cardiac_intervals]
 
-    # PSG respiratory
-    psg_respiratory_c0_intervals = (
-        participant_data["psg"]["respiratory"]["detection"]["channel_0"]
-        .get("phase_0", {})
-        .get("intervals", np.array([]).reshape(0, 2))
-    )
-    psg_respiratory_c0_detections = (
-        participant_data["psg"]["respiratory"]["detection"]["channel_0"]
-        .get("phase_0", {})
-        .get("detections", np.array([]))
-    )
-    psg_respiratory_c0_intervals = psg_respiratory_c0_detections[
-        psg_respiratory_c0_intervals
-    ]
-
-    psg_respiratory_c1_intervals = (
-        participant_data["psg"]["respiratory"]["detection"]["channel_1"]
-        .get("phase_0", {})
-        .get("intervals", np.array([]).reshape(0, 2))
-    )
-    psg_respiratory_c1_detections = (
-        participant_data["psg"]["respiratory"]["detection"]["channel_1"]
-        .get("phase_0", {})
-        .get("detections", np.array([]))
-    )
-    psg_respiratory_c1_intervals = psg_respiratory_c1_detections[
-        psg_respiratory_c1_intervals
-    ]
-
     data = {
         "psg": {
             "cardiac": {
@@ -159,14 +73,6 @@ def _get_useful_participant_data(participant_file_path: str) -> Dict:
                 "signal": participant_data["psg"]["cardiac"]["processed"]["signal"],
                 "processed_fs": participant_data["psg"]["cardiac"]["processed"]["fs"],
                 "upsampled_fs": participant_data["psg"]["cardiac"]["upsampled"]["fs"],
-            },
-            "respiratory": {
-                "c0_intervals": psg_respiratory_c0_intervals,
-                "c1_intervals": psg_respiratory_c1_intervals,
-                "signal": participant_data["psg"]["respiratory"]["processed"]["signal"],
-                "processed_fs": participant_data["psg"]["respiratory"]["processed"][
-                    "fs"
-                ],
             },
         },
         "pel": {
@@ -177,17 +83,6 @@ def _get_useful_participant_data(participant_file_path: str) -> Dict:
                 "signal_length": pel_cardiac_signal.shape[1],
                 "processed_fs": participant_data["pel"]["cardiac"]["processed"]["fs"],
                 "upsampled_fs": participant_data["pel"]["cardiac"]["upsampled"]["fs"],
-            },
-            "respiratory": {
-                "p0_sensor_intervals_list": pel_respiratory_p0_sensor_intervals_list,
-                "p1_sensor_intervals_list": pel_respiratory_p1_sensor_intervals_list,
-                "p0_ensemble_intervals": pel_respiratory_p0_ensemble_intervals,
-                "p1_ensemble_intervals": pel_respiratory_p1_ensemble_intervals,
-                "signal": pel_respiratory_signal,
-                "signal_length": pel_respiratory_signal.shape[1],
-                "processed_fs": participant_data["pel"]["respiratory"]["processed"][
-                    "fs"
-                ],
             },
         },
     }
@@ -283,22 +178,6 @@ def apply_interval_rate_estimation(df: pd.DataFrame) -> None:
         axis=1,
     )
 
-    df["psg_respiratory_c0_rates"] = df.progress_apply(
-        lambda row: get_interval_rate_estimation_from_intervals(
-            intervals=row["psg_respiratory_c0_intervals"],
-            fs=row["psg_respiratory_processed_fs"],
-        ),
-        axis=1,
-    )
-
-    df["psg_respiratory_c1_rates"] = df.progress_apply(
-        lambda row: get_interval_rate_estimation_from_intervals(
-            intervals=row["psg_respiratory_c1_intervals"],
-            fs=row["psg_respiratory_processed_fs"],
-        ),
-        axis=1,
-    )
-
     df["pel_cardiac_sensor_rates_list"] = df.progress_apply(
         lambda row: [
             get_interval_rate_estimation_from_intervals(
@@ -310,48 +189,10 @@ def apply_interval_rate_estimation(df: pd.DataFrame) -> None:
         axis=1,
     )
 
-    df["pel_respiratory_p0_sensor_rates_list"] = df.progress_apply(
-        lambda row: [
-            get_interval_rate_estimation_from_intervals(
-                intervals=sensor_intervals,
-                fs=row["pel_respiratory_processed_fs"],
-            )
-            for sensor_intervals in row["pel_respiratory_p0_sensor_intervals_list"]
-        ],
-        axis=1,
-    )
-
-    df["pel_respiratory_p1_sensor_rates_list"] = df.progress_apply(
-        lambda row: [
-            get_interval_rate_estimation_from_intervals(
-                intervals=sensor_intervals,
-                fs=row["pel_respiratory_processed_fs"],
-            )
-            for sensor_intervals in row["pel_respiratory_p1_sensor_intervals_list"]
-        ],
-        axis=1,
-    )
-
     df["pel_cardiac_ensemble_rates"] = df.progress_apply(
         lambda row: get_interval_rate_estimation_from_intervals(
             intervals=row["pel_cardiac_ensemble_intervals"],
             fs=row["pel_cardiac_upsampled_fs"],
-        ),
-        axis=1,
-    )
-
-    df["pel_respiratory_p0_ensemble_rates"] = df.progress_apply(
-        lambda row: get_interval_rate_estimation_from_intervals(
-            intervals=row["pel_respiratory_p0_ensemble_intervals"],
-            fs=row["pel_respiratory_processed_fs"],
-        ),
-        axis=1,
-    )
-
-    df["pel_respiratory_p1_ensemble_rates"] = df.progress_apply(
-        lambda row: get_interval_rate_estimation_from_intervals(
-            intervals=row["pel_respiratory_p1_ensemble_intervals"],
-            fs=row["pel_respiratory_processed_fs"],
         ),
         axis=1,
     )
@@ -385,7 +226,7 @@ def get_interval_matching(
     rates1: List[Rate],
     rates2: List[Rate],
     cost_threshold: float,
-    max_valid_duration_diff_pct: float,
+    max_valid_duration_diff_s: float,
     no_overlap_penalty: float,
 ) -> Tuple[float, List[Tuple[int, int]]]:
     n1 = len(rates1)
@@ -414,15 +255,15 @@ def get_interval_matching(
     # Find valid matches
     valid_matches = []
     for match in matches:
-        duration_diff_pct = abs(
+        duration_diff_s = abs(
             match["rate1"].duration_s - match["rate2"].duration_s
-        ) / max(match["rate1"].duration_s, match["rate2"].duration_s)
-        if duration_diff_pct > max_valid_duration_diff_pct:
+        )
+        if duration_diff_s > max_valid_duration_diff_s:
             continue
 
         valid_matches.append(match)
 
-    valid_matches_pct = len(valid_matches) / len(matches) * 100.0
+    valid_matches_pct = len(valid_matches) / n1 * 100.0
 
     return valid_matches, valid_matches_pct
 
@@ -435,7 +276,7 @@ def apply_interval_matching(df: pd.DataFrame) -> None:
                 rates1=row["psg_cardiac_rates"],
                 rates2=sensor_rates,
                 cost_threshold=CARDIAC_INTERVAL_MATCHING_COST_THRESHOLD,
-                max_valid_duration_diff_pct=CARDIAC_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
+                max_valid_duration_diff_s=CARDIAC_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_S,
                 no_overlap_penalty=CARDIAC_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
             )
             for sensor_rates in row["pel_cardiac_sensor_rates_list"]
@@ -455,7 +296,7 @@ def apply_interval_matching(df: pd.DataFrame) -> None:
             rates1=row["psg_cardiac_rates"],
             rates2=row["pel_cardiac_ensemble_rates"],
             cost_threshold=CARDIAC_INTERVAL_MATCHING_COST_THRESHOLD,
-            max_valid_duration_diff_pct=CARDIAC_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
+            max_valid_duration_diff_s=CARDIAC_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_S,
             no_overlap_penalty=CARDIAC_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
         ),
         axis=1,
@@ -465,194 +306,6 @@ def apply_interval_matching(df: pd.DataFrame) -> None:
     )
     df["pel_cardiac_ensemble_interval_matching"] = pel_cardiac_ensemble_result.apply(
         lambda x: x[1]
-    )
-
-    # Respiratory sensor
-    ## C0 P0
-    pel_respiratory_c0_p0_sensor_results = df.progress_apply(
-        lambda row: [
-            get_interval_matching(
-                rates1=row["psg_respiratory_c0_rates"],
-                rates2=sensor_rates,
-                cost_threshold=RESPIRATORY_INTERVAL_MATCHING_COST_THRESHOLD,
-                max_valid_duration_diff_pct=RESPIRATORY_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
-                no_overlap_penalty=RESPIRATORY_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
-            )
-            for sensor_rates in row["pel_respiratory_p0_sensor_rates_list"]
-        ],
-        axis=1,
-    )
-    df["pel_respiratory_c0_p0_sensor_interval_matches_list"] = (
-        pel_respiratory_c0_p0_sensor_results.apply(lambda x: [item[0] for item in x])
-    )
-    df["pel_respiratory_c0_p0_sensor_interval_matchings"] = (
-        pel_respiratory_c0_p0_sensor_results.apply(lambda x: [item[1] for item in x])
-    )
-
-    ## C0 P1
-    pel_respiratory_c0_p1_sensor_results = df.progress_apply(
-        lambda row: [
-            get_interval_matching(
-                rates1=row["psg_respiratory_c0_rates"],
-                rates2=sensor_rates,
-                cost_threshold=RESPIRATORY_INTERVAL_MATCHING_COST_THRESHOLD,
-                max_valid_duration_diff_pct=RESPIRATORY_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
-                no_overlap_penalty=RESPIRATORY_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
-            )
-            for sensor_rates in row["pel_respiratory_p1_sensor_rates_list"]
-        ],
-        axis=1,
-    )
-    df["pel_respiratory_c0_p1_sensor_interval_matches_list"] = (
-        pel_respiratory_c0_p1_sensor_results.apply(lambda x: [item[0] for item in x])
-    )
-    df["pel_respiratory_c0_p1_sensor_interval_matchings"] = (
-        pel_respiratory_c0_p1_sensor_results.apply(lambda x: [item[1] for item in x])
-    )
-
-    ## C1 P0
-    pel_respiratory_c1_p0_sensor_results = df.progress_apply(
-        lambda row: [
-            get_interval_matching(
-                rates1=row["psg_respiratory_c1_rates"],
-                rates2=sensor_rates,
-                cost_threshold=RESPIRATORY_INTERVAL_MATCHING_COST_THRESHOLD,
-                max_valid_duration_diff_pct=RESPIRATORY_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
-                no_overlap_penalty=RESPIRATORY_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
-            )
-            for sensor_rates in row["pel_respiratory_p0_sensor_rates_list"]
-        ],
-        axis=1,
-    )
-    df["pel_respiratory_c1_p0_sensor_interval_matches_list"] = (
-        pel_respiratory_c1_p0_sensor_results.apply(lambda x: [item[0] for item in x])
-    )
-    df["pel_respiratory_c1_p0_sensor_interval_matchings"] = (
-        pel_respiratory_c1_p0_sensor_results.apply(lambda x: [item[1] for item in x])
-    )
-
-    ## C1 P1
-    pel_respiratory_c1_p1_sensor_results = df.progress_apply(
-        lambda row: [
-            get_interval_matching(
-                rates1=row["psg_respiratory_c1_rates"],
-                rates2=sensor_rates,
-                cost_threshold=RESPIRATORY_INTERVAL_MATCHING_COST_THRESHOLD,
-                max_valid_duration_diff_pct=RESPIRATORY_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
-                no_overlap_penalty=RESPIRATORY_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
-            )
-            for sensor_rates in row["pel_respiratory_p1_sensor_rates_list"]
-        ],
-        axis=1,
-    )
-    df["pel_respiratory_c1_p1_sensor_interval_matches_list"] = (
-        pel_respiratory_c1_p1_sensor_results.apply(lambda x: [item[0] for item in x])
-    )
-    df["pel_respiratory_c1_p1_sensor_interval_matchings"] = (
-        pel_respiratory_c1_p1_sensor_results.apply(lambda x: [item[1] for item in x])
-    )
-
-    df["pel_respiratory_sensor_interval_matchings"] = df.apply(
-        lambda row: [
-            (max(c0p0, c0p1) + max(c1p0, c1p1)) / 2
-            for c0p0, c0p1, c1p0, c1p1 in zip(
-                row["pel_respiratory_c0_p0_sensor_interval_matchings"],
-                row["pel_respiratory_c0_p1_sensor_interval_matchings"],
-                row["pel_respiratory_c1_p0_sensor_interval_matchings"],
-                row["pel_respiratory_c1_p1_sensor_interval_matchings"],
-            )
-        ],
-        axis=1,
-    )
-
-    # Respiratory ensemble
-    ## C0 P0
-    pel_respiratory_c0_p0_ensemble_result = df.progress_apply(
-        lambda row: get_interval_matching(
-            rates1=row["psg_respiratory_c0_rates"],
-            rates2=row["pel_respiratory_p0_ensemble_rates"],
-            cost_threshold=RESPIRATORY_INTERVAL_MATCHING_COST_THRESHOLD,
-            max_valid_duration_diff_pct=RESPIRATORY_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
-            no_overlap_penalty=RESPIRATORY_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
-        ),
-        axis=1,
-    )
-    df["pel_respiratory_c0_p0_ensemble_interval_matches"] = (
-        pel_respiratory_c0_p0_ensemble_result.apply(lambda x: x[0])
-    )
-    df["pel_respiratory_c0_p0_ensemble_interval_matching"] = (
-        pel_respiratory_c0_p0_ensemble_result.apply(lambda x: x[1])
-    )
-
-    ## C0 P1
-    pel_respiratory_c0_p1_ensemble_result = df.progress_apply(
-        lambda row: get_interval_matching(
-            rates1=row["psg_respiratory_c0_rates"],
-            rates2=row["pel_respiratory_p1_ensemble_rates"],
-            cost_threshold=RESPIRATORY_INTERVAL_MATCHING_COST_THRESHOLD,
-            max_valid_duration_diff_pct=RESPIRATORY_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
-            no_overlap_penalty=RESPIRATORY_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
-        ),
-        axis=1,
-    )
-    df["pel_respiratory_c0_p1_ensemble_interval_matches"] = (
-        pel_respiratory_c0_p1_ensemble_result.apply(lambda x: x[0])
-    )
-    df["pel_respiratory_c0_p1_ensemble_interval_matching"] = (
-        pel_respiratory_c0_p1_ensemble_result.apply(lambda x: x[1])
-    )
-
-    ## C1 P0
-    pel_respiratory_c1_p0_ensemble_result = df.progress_apply(
-        lambda row: get_interval_matching(
-            rates1=row["psg_respiratory_c1_rates"],
-            rates2=row["pel_respiratory_p0_ensemble_rates"],
-            cost_threshold=RESPIRATORY_INTERVAL_MATCHING_COST_THRESHOLD,
-            max_valid_duration_diff_pct=RESPIRATORY_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
-            no_overlap_penalty=RESPIRATORY_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
-        ),
-        axis=1,
-    )
-    df["pel_respiratory_c1_p0_ensemble_interval_matches"] = (
-        pel_respiratory_c1_p0_ensemble_result.apply(lambda x: x[0])
-    )
-    df["pel_respiratory_c1_p0_ensemble_interval_matching"] = (
-        pel_respiratory_c1_p0_ensemble_result.apply(lambda x: x[1])
-    )
-
-    ## C1 P1
-    pel_respiratory_c1_p1_ensemble_result = df.progress_apply(
-        lambda row: get_interval_matching(
-            rates1=row["psg_respiratory_c1_rates"],
-            rates2=row["pel_respiratory_p1_ensemble_rates"],
-            cost_threshold=RESPIRATORY_INTERVAL_MATCHING_COST_THRESHOLD,
-            max_valid_duration_diff_pct=RESPIRATORY_INTERVAL_MATCHING_MAX_VALID_DURATION_DIFF_PCT,
-            no_overlap_penalty=RESPIRATORY_INTERVAL_MATCHING_NO_OVERLAP_PENALTY,
-        ),
-        axis=1,
-    )
-    df["pel_respiratory_c1_p1_ensemble_interval_matches"] = (
-        pel_respiratory_c1_p1_ensemble_result.apply(lambda x: x[0])
-    )
-    df["pel_respiratory_c1_p1_ensemble_interval_matching"] = (
-        pel_respiratory_c1_p1_ensemble_result.apply(lambda x: x[1])
-    )
-
-    df["pel_respiratory_ensemble_interval_matching"] = df.apply(
-        lambda row: (
-            (
-                max(
-                    row["pel_respiratory_c0_p0_ensemble_interval_matching"],
-                    row["pel_respiratory_c0_p1_ensemble_interval_matching"],
-                )
-                + max(
-                    row["pel_respiratory_c1_p0_ensemble_interval_matching"],
-                    row["pel_respiratory_c1_p1_ensemble_interval_matching"],
-                )
-            )
-            / 2
-        ),
-        axis=1,
     )
 
 
